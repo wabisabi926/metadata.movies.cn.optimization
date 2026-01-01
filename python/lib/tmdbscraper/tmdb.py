@@ -1,6 +1,12 @@
 from datetime import datetime, timedelta
 from . import tmdbapi
+from . import api_utils
 import xbmcaddon
+
+def get_pinyin_initials(text):
+    if not text:
+        return ""
+    return api_utils.get_pinyin_from_service(text)
 
 class TMDBMovieScraper(object):
     def __init__(self, url_settings, language, certification_country, search_language=""):
@@ -266,9 +272,31 @@ class TMDBMovieScraper(object):
             'collection_fallback': collection_fallback}
 
     def _assemble_details(self, movie, movie_fallback, collection, collection_fallback):
+        # Generate Pinyin Initials
+        pinyin_initials = api_utils.get_pinyin_from_service(movie['title'])
+        
+        # Check setting
+        write_initials = True
+        write_initials_originaltitle = True
+        if self.url_settings:
+             write_initials = self.url_settings.getSettingBool('write_initials')
+             write_initials_originaltitle = self.url_settings.getSettingBool('write_initials_originaltitle')
+
+        # SortTitle: All pinyin combinations + Title
+        sort_title = ""
+        original_title = movie['original_title']
+
+        if pinyin_initials:
+            if write_initials:
+                sort_title = "{}|{}".format(pinyin_initials, movie['title'])
+            
+            if write_initials_originaltitle:
+                original_title = "{}|{}|{}".format(pinyin_initials, movie['title'], original_title)
+
         info = {
             'title': movie['title'],
-            'originaltitle': movie['original_title'],
+            'originaltitle': original_title,
+            'sorttitle': sort_title,
             'plot': movie.get('overview') or movie_fallback.get('overview'),
             'tagline': movie.get('tagline') or movie_fallback.get('tagline'),
             'studio': _get_names(movie['production_companies']),

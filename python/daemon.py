@@ -10,6 +10,7 @@ import requests
 from urllib.parse import urlparse
 import select
 import concurrent.futures
+import itertools
 
 # --- DoH Implementation ---
 ORIGINAL_GETADDRINFO = socket.getaddrinfo
@@ -20,8 +21,76 @@ DNS_LOCK = threading.Lock()
 CUSTOM_IP_MAP = {}
 HOSTS_MAP = {}
 TARGET_DOMAINS = ['themoviedb.org', 'tmdb.org', 'fanart.tv', 'imdb.com', 'trakt.tv']
+BUFFER_SIZE = 4096
+DEFAULT_PORT = 56789
+HOST = '127.0.0.1'
 
 ADDON = xbmcaddon.Addon(id='metadata.tmdb.cn.optimization')
+CHAR_MAP = {}
+
+def load_char_map():
+    global CHAR_MAP
+    try:
+        addon_path = ADDON.getAddonInfo('path')
+        # Handle potential encoding issues with path on Windows
+        if isinstance(addon_path, bytes):
+            addon_path = addon_path.decode('utf-8')
+            
+        map_path = os.path.join(addon_path, 'resources', 'char_map.json')
+        if os.path.exists(map_path):
+            with open(map_path, 'r', encoding='utf-8') as f:
+                CHAR_MAP = json.load(f)
+            xbmc.log(f'[TMDB Service] Loaded char_map.json with {len(CHAR_MAP)} entries', xbmc.LOGINFO)
+        else:
+            xbmc.log(f'[TMDB Service] char_map.json not found at {map_path}', xbmc.LOGWARNING)
+    except Exception as e:
+        xbmc.log(f'[TMDB Service] Failed to load char_map.json: {e}', xbmc.LOGERROR)
+
+def get_pinyin_permutations(text):
+    if not text:
+        return ""
+    
+    # Convert each char to a list of possible initials
+    char_initials = []
+    for char in text:
+        if char in CHAR_MAP:
+            # Get all pinyin variations for this char
+            pinyins = CHAR_MAP[char]
+            # Extract initials and deduplicate preserving order
+            initials = []
+            seen = set()
+            for p in pinyins:
+                if p:
+                    init = p[0].upper()
+                    if init not in seen:
+                        seen.add(init)
+                        initials.append(init)
+            
+            if initials:
+                char_initials.append(initials)
+            else:
+                if char.isalnum():
+                    char_initials.append([char.upper()])
+        else:
+            if char.isalnum():
+                char_initials.append([char.upper()])
+
+    # Generate Cartesian product
+    try:
+        permutations = list(itertools.product(*char_initials))
+        # Join them back into strings
+        results = ["".join(p) for p in permutations]
+        # Deduplicate preserving order
+        seen_res = set()
+        unique_results = []
+        for r in results:
+            if r not in seen_res:
+                seen_res.add(r)
+                unique_results.append(r)
+        return "|".join(unique_results)
+    except Exception as e:
+        xbmc.log(f'[TMDB Service] Pinyin generation error: {e}', xbmc.LOGERROR)
+        return text
 
 def load_custom_ips():
     global CUSTOM_IP_MAP, TARGET_DOMAINS
@@ -230,7 +299,7 @@ class SessionManager:
                 s.mount('http://', adapter)
                 s.mount('https://', adapter)
                 self._sessions[domain] = s
-                xbmc.log(f'[TMDB Service] -----New session created for {domain}', xbmc.LOGWARNING)
+                xbmc.log(f'[TMDB Service] -----New session created for {domain} {url}', xbmc.LOGWARNING)
             return self._sessions[domain]
 
 session_manager = SessionManager()
@@ -307,6 +376,15 @@ def handle_client(conn, addr):
         if isinstance(payload, dict) and 'requests' in payload:
             requests_list = payload['requests']
             dns_settings = payload.get('dns_settings')
+        # Protocol V3: Pinyin Request
+        elif isinstance(payload, dict) and 'pinyin' in payload:
+            text = payload['pinyin']
+            try:
+                result = get_pinyin_permutations(text)
+                conn.sendall(json.dumps({'result': result}).encode('utf-8'))
+            except Exception as e:
+                conn.sendall(json.dumps({'error': str(e)}).encode('utf-8'))
+            return
         # Protocol V1: List (Batch)
         elif isinstance(payload, list):
             requests_list = payload
@@ -439,6 +517,7 @@ class SettingsMonitor(xbmc.Monitor):
 
 if __name__ == '__main__':
     monitor = SettingsMonitor()
+    load_char_map() # Load pinyin map
     load_custom_ips()
     load_hosts() # Load hosts on startup
     start_server(monitor)

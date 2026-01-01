@@ -16,7 +16,9 @@ def get_api_url(settings=None):
             base = addon.getSetting('fanart_base_url')
         if not base:
             base = 'webservice.fanart.tv'
-        return 'https://' + base + '/v3/movies/{}'
+        if not base.startswith('http'):
+            base = 'https://' + base
+        return base + '/v3/movies/{}'
     except:
         return 'https://webservice.fanart.tv/v3/movies/{}'
 

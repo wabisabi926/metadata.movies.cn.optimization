@@ -86,6 +86,45 @@ def ensure_daemon_started():
     xbmc.log('[TMDB Scraper] Failed to start daemon', xbmc.LOGERROR)
     return False
 
+def get_pinyin_from_service(text):
+    """Request pinyin conversion from daemon"""
+    try:
+        if not ensure_daemon_started():
+             # Fallback: if daemon fails, return empty string so scraping continues without pinyin
+             if xbmc: xbmc.log('[TMDB Scraper] Daemon failed, skipping pinyin', xbmc.LOGWARNING)
+             return ""
+
+        service_port = 56789
+        port_prop = xbmcgui.Window(10000).getProperty('TMDB_OPTIMIZATION_SERVICE_PORT')
+        if port_prop:
+            service_port = int(port_prop)
+
+        payload = {'pinyin': text}
+        
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(10) # 10s timeout
+            s.connect((SERVICE_HOST, service_port))
+            s.sendall(json.dumps(payload).encode('utf-8'))
+            
+            # Receive response
+            data = b""
+            while True:
+                chunk = s.recv(4096)
+                if not chunk:
+                    break
+                data += chunk
+            
+            if not data:
+                return ""
+                
+            response = json.loads(data)
+            return response.get('result', "")
+            
+    except Exception as e:
+        if xbmc:
+            xbmc.log(f'[TMDB Scraper] Pinyin Service Error: {e}', xbmc.LOGERROR)
+        return ""
+
 def load_info_from_service(url, params=None, headers=None, batch_payload=None, dns_settings=None):
     """
     Send request to the background service daemon via TCP socket.

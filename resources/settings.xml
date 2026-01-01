@@ -138,7 +138,15 @@
 						<heading>30013</heading>
 					</control>
 				</setting>
-				<setting id="fetch_posters" type="boolean" label="30014" help="">
+				<setting id="write_initials" type="boolean" label="30021" help="">
+					<level>0</level>
+					<default>true</default>
+					<control type="toggle"/>
+				</setting>				<setting id="write_initials_originaltitle" type="boolean" label="30022" help="">
+					<level>0</level>
+					<default>true</default>
+					<control type="toggle" />
+				</setting>				<setting id="fetch_posters" type="boolean" label="30014" help="">
 					<level>0</level>
 					<default>true</default>
 					<control type="toggle"/>
@@ -155,7 +163,7 @@
 				</setting>
 				<setting id="trailer" type="boolean" label="30004" help="">
 					<level>0</level>
-					<default>true</default>
+					<default>false</default>
 					<control type="toggle"/>
 				</setting>
 				<setting id="tmdbcertcountry" type="string" label="30006" help="">
@@ -365,7 +373,7 @@
 			<group id="1">
 				<setting id="tmdb_api_base_url" type="string" label="32006" help="">
 					<level>0</level>
-					<default>api.tmdb.org</default>
+					<default>https://api.tmdb.org</default>
 					<constraints>
 						<allowempty>true</allowempty>
 					</constraints>
@@ -385,7 +393,7 @@
 				</setting>
 				<setting id="fanart_base_url" type="string" label="32008" help="">
 					<level>0</level>
-					<default>webservice.fanart.tv</default>
+					<default>https://webservice.fanart.tv</default>
 					<constraints>
 						<allowempty>true</allowempty>
 					</constraints>
@@ -395,7 +403,7 @@
 				</setting>
 				<setting id="imdb_base_url" type="string" label="32009" help="">
 					<level>0</level>
-					<default>www.imdb.com</default>
+					<default>https://www.imdb.com</default>
 					<constraints>
 						<allowempty>true</allowempty>
 					</constraints>
@@ -405,7 +413,7 @@
 				</setting>
 				<setting id="trakt_base_url" type="string" label="32010" help="">
 					<level>0</level>
-					<default>api.trakt.tv</default>
+					<default>https://api.trakt.tv</default>
 					<constraints>
 						<allowempty>true</allowempty>
 					</constraints>

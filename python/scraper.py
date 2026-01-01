@@ -286,6 +286,8 @@ def get_details(input_uniqueids, handle, settings, fail_silently=False):
 def set_info(infotag: xbmc.InfoTagVideo, info_dict):
     infotag.setTitle(info_dict['title'])
     infotag.setOriginalTitle(info_dict['originaltitle'])
+    if 'sorttitle' in info_dict:
+        infotag.setSortTitle(info_dict['sorttitle'])
     infotag.setPlot(info_dict['plot'])
     infotag.setTagLine(info_dict['tagline'])
     infotag.setStudios(info_dict['studio'])

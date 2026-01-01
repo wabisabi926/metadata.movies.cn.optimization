@@ -33,7 +33,9 @@ def get_imdb_url(settings=None):
             base = addon.getSetting('imdb_base_url')
         if not base:
             base = 'www.imdb.com'
-        return 'https://' + base + '/title/{}/'
+        if not base.startswith('http'):
+            base = 'https://' + base
+        return base + '/title/{}/'
     except:
         return 'https://www.imdb.com/title/{}/'
 

@@ -49,7 +49,9 @@ def get_base_url(settings=None):
             base = addon.getSetting('tmdb_api_base_url')
         if not base:
             base = 'api.tmdb.org'
-        return 'https://' + base + '/3/{}'
+        if not base.startswith('http'):
+            base = 'https://' + base
+        return base + '/3/{}'
     except:
         return 'https://api.tmdb.org/3/{}'
 

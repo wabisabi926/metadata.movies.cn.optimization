@@ -52,7 +52,9 @@ def get_trakt_url(settings=None):
         # Original: https://api.trakt.tv/movies/{}
         # If user inputs 'trakt.tv', result: https://trakt.tv/movies/{}
         # If user inputs 'api.trakt.tv', result: https://api.trakt.tv/movies/{}
-        return 'https://' + base + '/movies/{}'
+        if not base.startswith('http'):
+            base = 'https://' + base
+        return base + '/movies/{}'
     except:
         return 'https://api.trakt.tv/movies/{}'
 
