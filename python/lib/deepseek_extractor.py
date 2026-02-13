@@ -36,12 +36,12 @@ class DeepSeekExtractor:
         
         # Build prompt
         # User defined prompt template + filename
-        content_prompt = f"{self.prompt_template}\nFilename: {filename}"
+        content_prompt = f"{self.prompt_template}\n文件名: {filename}"
         
         payload = {
             "model": self.model,
             "messages": [
-                {"role": "system", "content": "You are a JSON-only response bot. Do not output anything other than standard JSON."},
+                {"role": "system", "content": "你只能返回标准json格式的数据"},
                 {"role": "user", "content": content_prompt}
             ],
             "stream": False

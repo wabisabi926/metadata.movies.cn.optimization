@@ -475,6 +475,7 @@ class KodiScraperSimulation:
         self.stats_failed = 0
         self.running_futures = set()
         self.future_map = {}
+        self.failed_items = []
 
         
 
@@ -954,7 +955,7 @@ class KodiScraperSimulation:
                     english_title = t_en
                 if y_ds:
                     try:
-                        year = int(y_ds)
+                        int(y_ds)
                     except Exception as e:
                         year = None
                 log(f"DeepSeek Extracted: '{raw_name}' -> zh: '{title}', year: '{year}', en: '{english_title}' ", xbmc.LOGINFO)
@@ -964,6 +965,7 @@ class KodiScraperSimulation:
         return title, year, english_title
 
     def process_file(self, file_path, settings, video_files_in_dir=1, deepseek_extractor=None):
+        search_history = []
         try:
             # Prepare directory listing once for all local checks (Optimization)
             dir_path = os.path.dirname(file_path)
@@ -979,6 +981,10 @@ class KodiScraperSimulation:
             if not year:
                 year = None
             
+            if unique_id:
+                id_type, id_val = unique_id
+                search_history.append(f"唯一ID: {id_type}={id_val}")
+            
             log(f"Processing: {file_path} | Title: {title} | Year: {year} | ID: {unique_id}", xbmc.LOGINFO)
             runner = ScraperRunner(settings)
             details = None
@@ -989,11 +995,13 @@ class KodiScraperSimulation:
                 details = nfo_details
             elif nfo_ids:
                 log(f"Found NFO IDs: {nfo_ids}", xbmc.LOGINFO)
+                search_history.append(f"NFO IDs: {nfo_ids}")
                 try:
                     details = runner.get_details(nfo_ids)
                 except Exception as e:
                     log(f"GetDetails(NFO) Error: {e}", xbmc.LOGERROR)
 
+            # unique_id = None
             # 2. Filename ID
             if not details and unique_id:
                 id_type, id_val = unique_id
@@ -1016,9 +1024,12 @@ class KodiScraperSimulation:
                             year = ds_year
                         if ds_english:
                             english_title_from_deepseek = ds_english
+                    
+                    search_history.append(f"搜索: {title} ({year})")
                     results = runner.search(title, year)
                     if not results and english_title_from_deepseek and english_title_from_deepseek != title:
                         log(f"No results for original title. Trying DeepSeek English title: {english_title_from_deepseek}", xbmc.LOGINFO)
+                        search_history.append(f"搜索(DeepSeek提取的英文名): {english_title_from_deepseek} ({year})")
                         results = runner.search(english_title_from_deepseek, year)
                     if results:
                         match = results[0]
@@ -1034,8 +1045,8 @@ class KodiScraperSimulation:
                     log(f"Search Error: {e}", xbmc.LOGERROR)
 
             if not details or "error" in details:
-                log(f"Failed to get details for {title} {year} {unique_id} {english_title_from_deepseek} {file_path}", xbmc.LOGERROR)
-                return None
+                # log(f"Failed to get details for {title} {year} {unique_id} {english_title_from_deepseek} {file_path}", xbmc.LOGERROR)
+                return {'is_failed': True, 'history': search_history}
             
             # 4. Local Artwork Overlay
             self.scan_local_art(file_path, details, video_files_in_dir, files_map)
@@ -1043,7 +1054,7 @@ class KodiScraperSimulation:
             return details
         except Exception:
             log(f"Fatal Error in process_file for {file_path}: {traceback.format_exc()}", xbmc.LOGERROR)
-            return None
+            return {'is_failed': True, 'history': search_history}
 
     def check_should_stop(self):
         if self.stop_scan: return True
@@ -1060,7 +1071,7 @@ class KodiScraperSimulation:
             f_path, _, weight = self.future_map.pop(f)
             self.running_futures.remove(f)
             
-            # process_file returns 'details' or None
+            # process_file returns 'details' or {'is_failed': True, 'history': []} or None
             details = None
             try: details = f.result()
             except: details = None
@@ -1069,7 +1080,16 @@ class KodiScraperSimulation:
             if weight:
                 self.deal_process += weight
             scraped_title = None
-            if details:
+            
+            # Check for failure marker
+            is_failed = False
+            failure_history = []
+            if details and isinstance(details, dict) and details.get('is_failed'):
+                is_failed = True
+                failure_history = details.get('history', [])
+                details = None # Clear details to trigger failure block below
+
+            if details and not is_failed:
                 self.stats_success += 1
                 if self.db:
                     try:
@@ -1090,6 +1110,11 @@ class KodiScraperSimulation:
             else:
                 self.stats_failed += 1
                 log(f"Task Failed or Returned None for {f_path}", xbmc.LOGWARNING)
+                # Store object with failure info
+                self.failed_items.append({
+                    'path': f_path,
+                    'history': failure_history
+                })
             f_dir = urllib.parse.unquote(os.path.dirname(f_path))
             f_name = urllib.parse.unquote(os.path.basename(f_path).split(".")[0])
             message = f"目录: {f_dir}\n {f_name}-> {scraped_title}\n 总计(成功: {self.stats_success}, 失败: {self.stats_failed})"
@@ -1327,8 +1352,13 @@ class KodiScraperSimulation:
                                         prompt_template
                                     )
                                     log(f"DeepSeek initialized for path: {path}", xbmc.LOGINFO)
+                            else:
+                                log(f"DeepSeek key file not found or empty: {key_file}", xbmc.LOGWARNING)
+                                xbmcgui.Dialog().notification("TMDB CN Optimization", f"DeepSeek 密钥文件未找到或为空: {key_file}", icon_path, 3000)
                         except Exception as e:
                             log(f"DeepSeek Init Error: {e}", xbmc.LOGERROR)
+                            xbmcgui.Dialog().notification("TMDB CN Optimization", f"DeepSeek 初始化失败: {e}", icon_path, 3000)
+                            break
 
                     self.scan_path(path, path_total_process, deepseek_extractor)
 
@@ -1358,6 +1388,41 @@ class KodiScraperSimulation:
             msg = f"多线程刮削: {self.stats_processed} | 成功: {self.stats_success} | 失败: {self.stats_failed}"
             xbmcgui.Dialog().notification("TMDB CN Optimization", msg, icon_path, 5000)
             log(f"[SUMMARY] {msg.replace(chr(10), ' ')}", xbmc.LOGINFO)
+
+            if self.failed_items:
+                failed_map = {}
+                for item in self.failed_items:
+                    # Backward compatibility safely just in case
+                    if isinstance(item, str):
+                        f_path = item
+                        history = []
+                    else:
+                        f_path = item.get('path')
+                        history = item.get('history', [])
+
+                    try: decoded_path = urllib.parse.unquote(f_path)
+                    except: decoded_path = f_path
+                    
+                    parent_dir = os.path.dirname(decoded_path)
+                    file_name = os.path.basename(decoded_path)
+                    
+                    if parent_dir not in failed_map:
+                        failed_map[parent_dir] = []
+                    failed_map[parent_dir].append((file_name, history))
+                
+                lines = []
+                for d in sorted(failed_map.keys()):
+                    lines.append(f"[COLOR yellow] {d}[/COLOR]")
+                    # Sort by filename
+                    for f_name, hist in sorted(failed_map[d], key=lambda x: x[0]):
+                        lines.append(f"   [COLOR red]{f_name}[/COLOR]")
+                        if hist:
+                            for h in hist:
+                                lines.append(f"      [COLOR grey]- {h}[/COLOR]")
+                    lines.append("")
+                        
+                failed_msg = "\n".join(lines)
+                xbmcgui.Dialog().textviewer("刮削失败列表 (按目录)", failed_msg)
 
 if __name__ == '__main__':
     sim = KodiScraperSimulation()
