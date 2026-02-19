@@ -185,12 +185,136 @@ class KodiDatabase:
                    (item_id, media_id, media_type))
         except: pass 
 
-    def save_movie(self, id_file, details, file_path=""):
+    def _handle_movie_version_merge(self, id_movie, id_file, file_path):
+        """
+        Logic for 'Merge same movie as versions'
+        1. Check existing versions of id_movie.
+        2. If any version has default/empty name (or 'Default'), update it to its filename.
+        3. Determine name for the NEW file (file_path).
+        4. Insert new version link.
+        """
+        try:
+            cur = self.conn.cursor()
+
+            # Helper to get decoded buffer filename
+            def get_decoded_name(path):
+                f_name = os.path.basename(path)
+                return urllib.parse.unquote(f_name)
+            
+            # 1. Get all existing versions for this movie
+            # List of {idFile, name, idType}
+            # Note: We use idType to know if it is a system default
+            # Join with videoversiontype on id (PK of type table) = idType (FK in version table)
+            cur.execute("SELECT vv.idFile, vvt.name, vv.idType FROM videoversion vv LEFT JOIN videoversiontype vvt ON vv.idType = vvt.id WHERE vv.idMedia=? AND vv.media_type='movie'", (id_movie,))
+            rows = cur.fetchall()
+            existing_versions = []
+            used_names = set()
+            
+            for r in rows:
+                existing_versions.append({'idFile': r[0], 'name': r[1], 'idType': r[2]})
+                if r[1]: used_names.add(r[1])
+
+            # 2. Fix existing versions if they have generic names
+            for ver in existing_versions:
+                 v_id_file = ver['idFile']
+                 v_name = ver['name']
+                 v_id_type = ver['idType']
+                 
+                 # Logic: If name is 'Default' or empty or it is a system type (< 40800), rename it to its filename
+                 if not v_name or v_id_type < 40800:
+                     cur.execute("SELECT strFilename FROM files WHERE idFile=?", (v_id_file,))
+                     f_row = cur.fetchone()
+                     if f_row and f_row[0]:
+                         v_filename = f_row[0]
+                         try: v_decoded_name = urllib.parse.unquote(v_filename)
+                         except: v_decoded_name = v_filename
+
+                         if v_decoded_name:
+                             new_type_id = self.get_video_version_type_id(v_decoded_name)
+                             # Update DB
+                             # videoversion PK is idFile!
+                             cur.execute("UPDATE videoversion SET idType=? WHERE idFile=? AND idMedia=?", (new_type_id, v_id_file, id_movie))
+                             used_names.add(v_decoded_name)
+            
+            # 3. Add link for NEW file
+            # Check if this file is already linked?
+            cur.execute("SELECT idType FROM videoversion WHERE idFile=? AND idMedia=? AND media_type='movie'", (id_file, id_movie))
+            if cur.fetchone():
+                 log(f"Version link already exists for {file_path}", xbmc.LOGINFO)
+                 return
+            
+            # Determine unique name for new file
+            new_name = get_decoded_name(file_path)
+            base_name = new_name
+            counter = 2
+            final_name = base_name
+            
+            # Simple collision resolution
+            while final_name in used_names:
+                final_name = f"{base_name} (v{counter})"
+                counter += 1
+            
+            log(f"Merging merged Version: {final_name} -> ID {id_movie}", xbmc.LOGINFO)
+            type_id = self.get_video_version_type_id(final_name)
+            
+            # Insert
+            # itemType=0 (Version)
+            # idType is the FK to videoversiontype
+            cur.execute("INSERT INTO videoversion (idFile, idMedia, media_type, itemType, idType) VALUES (?, ?, 'movie', 0, ?)", 
+                       (id_file, id_movie, type_id))
+            self.conn.commit()
+
+        except Exception as e:
+            log(f"Error _handle_movie_version_merge: {e}", xbmc.LOGERROR)
+
+    def get_video_version_type_id(self, version_name):
+        if not version_name: 
+            return 40400 # Default
+        
+        try:
+            cur = self.conn.cursor()
+            # Check if type exists
+            cur.execute("SELECT id FROM videoversiontype WHERE name=?", (version_name,))
+            row = cur.fetchone()
+            if row: return row[0]
+            
+            # Create new type (owner=2 usually means user created/addon)
+            cur.execute("INSERT INTO videoversiontype (name, owner, itemType) VALUES (?, 2, 0)", (version_name,))
+            return cur.lastrowid
+        except Exception as e:
+            # Fallback for older Kodi versions without this table
+            log(f"Error get_video_version_type_id: {e}", xbmc.LOGERROR)
+            return 40400
+
+
+    def save_movie(self, id_file, details, file_path="", merge_versions=False):
         if not self.conn: return None
         cur = self.conn.cursor()
         info = details.get('info', {})
         available_art = details.get('available_art', {})
         
+        # --- MERGE VERSION LOGIC ---
+        if merge_versions:
+            tmdb_id = None
+            if 'tmdb' in details.get('uniqueids', {}):
+                tmdb_id = details['uniqueids']['tmdb']
+            elif 'id' in details: # sometimes in root
+                tmdb_id = details['id']
+            
+            if tmdb_id:
+                # Check for EXISTING movie with this TMDB ID
+                cur.execute("SELECT media_id FROM uniqueid WHERE media_type='movie' AND type='tmdb' AND value=?", (str(tmdb_id),))
+                u_row = cur.fetchone()
+                if u_row:
+                    existing_id_movie = u_row[0]
+                    # Ensure it exists in movie table
+                    cur.execute("SELECT idMovie FROM movie WHERE idMovie=?", (existing_id_movie,))
+                    if cur.fetchone():
+                         # Perform merge
+                         self._handle_movie_version_merge(existing_id_movie, id_file, file_path)
+                         return existing_id_movie
+        # ---------------------------
+
         cur.execute("SELECT idMovie FROM movie WHERE idFile=?", (id_file,))
         row = cur.fetchone()
         
@@ -773,7 +897,83 @@ class KodiScraperSimulation:
                 if art_type == 'thumb':
                     candidate_thumb = f"{file_base}{ext}".lower() # avatar.jpg
                     add_art('thumb', candidate_thumb)
-                    
+
+    def get_movie_by_tmdb_id(self, tmdb_id):
+        if not tmdb_id: return None
+        try:
+            cur = self.conn.cursor()
+            # uniqueid table: media_id, media_type, value, type
+            cur.execute("SELECT media_id FROM uniqueid WHERE media_type='movie' AND type='tmdb' AND value=?", (str(tmdb_id),))
+            row = cur.fetchone()
+            if row: return row[0]
+        except Exception as e:
+            log(f"DB Error get_movie_by_tmdb_id: {e}", xbmc.LOGERROR)
+        return None
+
+    def get_video_version_type_id(self, version_name):
+        if not version_name: 
+            return 40400 # Default
+        
+        try:
+            cur = self.conn.cursor()
+            # Check if type exists
+            cur.execute("SELECT idType FROM videoversiontype WHERE name=?", (version_name,))
+            row = cur.fetchone()
+            if row: return row[0]
+            
+            # Create new type (owner=2 usually means user created/addon)
+            cur.execute("INSERT INTO videoversiontype (name, owner) VALUES (?, 2)", (version_name,))
+            return cur.lastrowid
+        except Exception as e:
+            # Fallback for older Kodi versions without this table
+            return 40400
+
+    def get_existing_versions(self, id_movie):
+        """Returns list of (idFile, versionName) for a movie"""
+        versions = []
+        try:
+            cur = self.conn.cursor()
+            sql = """
+                SELECT vv.idFile, vvt.name 
+                FROM videoversion vv 
+                LEFT JOIN videoversiontype vvt ON vv.idType = vvt.idType 
+                WHERE vv.idMedia=? AND vv.media_type='movie'
+            """
+            cur.execute(sql, (id_movie,))
+            input_rows = cur.fetchall()
+            for r in input_rows:
+                versions.append({'idFile': r[0], 'name': r[1]})
+        except:
+             pass
+        return versions
+
+    def update_video_version_type(self, id_file, id_movie, version_name):
+        """Updates or Inserts video version link"""
+        try:
+            type_id = self.get_video_version_type_id(version_name)
+            cur = self.conn.cursor()
+            
+            # Check if link exists
+            cur.execute("SELECT idVersion FROM videoversion WHERE idFile=? AND idMedia=? AND media_type='movie'", (id_file, id_movie))
+            row = cur.fetchone()
+            
+            if row:
+                cur.execute("UPDATE videoversion SET idType=? WHERE idVersion=?", (type_id, row[0]))
+            else:
+                 cur.execute("INSERT INTO videoversion (idFile, idMedia, media_type, itemType, idType) VALUES (?, ?, ?, ?, ?)",
+                            (id_file, id_movie, 'movie', 0, type_id))
+        except Exception as e:
+            log(f"Error update_video_version_type: {e}", xbmc.LOGERROR)
+
+    def _get_filename_from_idfile(self, id_file):
+        try:
+            cur = self.conn.cursor()
+            cur.execute("SELECT strFilename FROM files WHERE idFile=?", (id_file,))
+            row = cur.fetchone()
+            if row: return row[0]
+        except: pass
+        return ""
+
     def _parse_xml_nfo(self, nfo_content):
         """
         Parses XML content into details dict.
@@ -1100,7 +1300,7 @@ class KodiScraperSimulation:
         for f in done_futures:
             if f not in self.future_map: continue
                 
-            f_path, _, weight = self.future_map.pop(f)
+            f_path, _, weight, merge_vers = self.future_map.pop(f)
             self.running_futures.remove(f)
             
             # process_file returns 'details' or {'is_failed': True, 'history': []} or None
@@ -1129,7 +1329,7 @@ class KodiScraperSimulation:
                         f_dir = os.path.dirname(f_path)
                         id_path = self.db.get_or_create_path(f_dir)
                         id_file = self.db.get_or_create_file(f_path, id_path)
-                        self.db.save_movie(id_file, details, f_path)
+                        self.db.save_movie(id_file, details, f_path, merge_versions=merge_vers)
                         info_obj = details.get('info', {})
                         year = info_obj.get('year', '')
                         if not year and info_obj.get('premiered'):
@@ -1184,6 +1384,9 @@ class KodiScraperSimulation:
         except Exception:
             log(f"Error listing dir: {path}", xbmc.LOGERROR)
             return
+
+        # NEW: Check merge setting
+        merge_vers = settings.getSettingBool('merge_same_movie_version')
             
         # Kodi Logic: Check for .nomedia file
         # If present, recursively skip this folder and all subfolders (Kodi behavior)
@@ -1241,7 +1444,7 @@ class KodiScraperSimulation:
                 # Submit new task
                 future = self.executor.submit(self.process_file, full_path, settings, video_files_in_dir, deepseek_extractor=deepseek_extractor)
                 self.running_futures.add(future)
-                self.future_map[future] = (full_path, settings, item_weight_process)
+                self.future_map[future] = (full_path, settings, item_weight_process, merge_vers)
         
         # Process Directories
         for d in dirs:

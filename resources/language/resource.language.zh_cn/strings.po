@@ -177,6 +177,10 @@ msgctxt "#33002"
 msgid "Thread Count"
 msgstr "线程数"
 
+msgctxt "#33030"
+msgid "Merge Same Movie as Versions"
+msgstr "将相同电影合并为不同版本"
+
 msgctxt "#33010"
 msgid "Enable DeepSeek"
 msgstr "使用DeepSeek提取电影名/年份"

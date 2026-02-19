@@ -124,6 +124,10 @@ msgctxt "#33002"
 msgid "Thread Count"
 msgstr ""
 
+msgctxt "#33030"
+msgid "Merge Same Movie as Versions"
+msgstr ""
+
 msgctxt "#33010"
 msgid "Enable DeepSeek"
 msgstr ""
