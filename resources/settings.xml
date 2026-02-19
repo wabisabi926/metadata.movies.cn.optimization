@@ -394,6 +394,16 @@
 						<popup>true</popup>
 					</control>
 				</setting>
+				<setting id="ignore_local_nfo_art" type="boolean" label="33020" help="">
+					<level>0</level>
+					<default>true</default>
+					<control type="toggle"/>
+				</setting>
+				<setting id="skip_bdmv_folder" type="boolean" label="33021" help="">
+					<level>0</level>
+					<default>true</default>
+					<control type="toggle"/>
+				</setting>
 				<setting id="enable_deepseek" type="boolean" label="33010" help="">
 					<level>0</level>
 					<default>false</default>

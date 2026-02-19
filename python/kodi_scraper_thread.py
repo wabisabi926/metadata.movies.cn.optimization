@@ -994,18 +994,21 @@ class KodiScraperSimulation:
             ds_title, ds_year, ds_english = None, None, None
             english_title_from_deepseek = None # For compatibility in failure logging
 
+            ignore_local = settings.getSettingBool('ignore_local_nfo_art')
+
             # 1. NFO Check
-            nfo_details, nfo_ids = self.scan_local_nfo(file_path, video_files_in_dir, files_map)
-            if nfo_details:
-                log(f"Found Full NFO for {file_path}", xbmc.LOGINFO)
-                details = nfo_details
-            elif nfo_ids:
-                log(f"Found NFO IDs: {nfo_ids}", xbmc.LOGINFO)
-                search_history.append(f"NFO IDs: {nfo_ids}")
-                try:
-                    details = runner.get_details(nfo_ids)
-                except Exception as e:
-                    log(f"GetDetails(NFO) Error: {e}", xbmc.LOGERROR)
+            if not ignore_local:
+                nfo_details, nfo_ids = self.scan_local_nfo(file_path, video_files_in_dir, files_map)
+                if nfo_details:
+                    log(f"Found Full NFO for {file_path}", xbmc.LOGINFO)
+                    details = nfo_details
+                elif nfo_ids:
+                    log(f"Found NFO IDs: {nfo_ids}", xbmc.LOGINFO)
+                    search_history.append(f"NFO IDs: {nfo_ids}")
+                    try:
+                        details = runner.get_details(nfo_ids)
+                    except Exception as e:
+                        log(f"GetDetails(NFO) Error: {e}", xbmc.LOGERROR)
 
             # unique_id = None
             # 2. Filename ID
@@ -1077,7 +1080,8 @@ class KodiScraperSimulation:
                 return {'is_failed': True, 'history': search_history}
             
             # 4. Local Artwork Overlay
-            self.scan_local_art(file_path, details, video_files_in_dir, files_map)
+            if not ignore_local:
+                self.scan_local_art(file_path, details, video_files_in_dir, files_map)
 
             return details
         except Exception:
@@ -1187,6 +1191,14 @@ class KodiScraperSimulation:
             log(f"SKIPPING Directory {path}: .nomedia found", xbmc.LOGINFO)
             self.deal_process += path_total_process
             return
+
+        # New Logic: Skip BDMV folder if setting enabled
+        if settings.getSettingBool('skip_bdmv_folder'):
+            # Case-insensitive check for BDMV folder
+            if any(d.upper() == 'BDMV' for d in dirs):
+                log(f"SKIPPING Directory {path}: BDMV folder found", xbmc.LOGINFO)
+                self.deal_process += path_total_process
+                return
 
         l = len(files) + len(dirs)
         if l == 0:
