@@ -629,9 +629,43 @@ class KodiScraperSimulation:
 
     def load_scraped_files(self):
         """
-        Loads all scraped movie file paths into memory for fast lookup.
+        Loads all scraped file paths from the 'files' table in the database.
+        This includes main movie files AND all versions/assets.
         """
-        log("Loading scraped movies from library...", xbmc.LOGINFO)
+        log("Loading scraped files from DB (direct SQL)...", xbmc.LOGINFO)
+        if not self.db or not self.db.conn:
+            log("DB not connected, falling back to JSON-RPC...", xbmc.LOGWARNING)
+            self._load_scraped_files_jsonrpc()
+            return
+
+        try:
+            cur = self.db.conn.cursor()
+            # Join with path table to get full paths
+            query = "SELECT p.strPath, f.strFilename FROM files f JOIN path p ON f.idPath = p.idPath"
+            cur.execute(query)
+            rows = cur.fetchall()
+            
+            count = 0
+            for r in rows:
+                p_str = r[0]
+                f_str = r[1]
+                full_path = p_str + f_str
+                self.scraped_files.add(self.normalize_path(full_path))
+                count += 1
+                
+            log(f"Loaded {count} files from DB.", xbmc.LOGINFO)
+            self.loaded_scraped_status = True
+            
+        except Exception as e:
+            log(f"Error loading files from DB: {e}", xbmc.LOGERROR)
+            # Fallback
+            self._load_scraped_files_jsonrpc()
+
+    def _load_scraped_files_jsonrpc(self):
+        """
+        Loads all scraped movie file paths into memory for fast lookup (JSON-RPC Fallback).
+        """
+        log("Loading scraped movies from library (JSON-RPC)...", xbmc.LOGINFO)
         result = self.execute_jsonrpc("VideoLibrary.GetMovies", {"properties": ["file"]})
         
         if "result" in result and "movies" in result["result"]:
@@ -640,7 +674,7 @@ class KodiScraperSimulation:
                 if f:
                     self.scraped_files.add(self.normalize_path(f))
         
-        log(f"Loaded {len(self.scraped_files)} scraped movies.", xbmc.LOGINFO)
+        log(f"Loaded {len(self.scraped_files)} scraped movies via JSON-RPC.", xbmc.LOGINFO)
         self.loaded_scraped_status = True
 
     def load_path_cache(self):
@@ -1545,7 +1579,6 @@ class KodiScraperSimulation:
             # Initialize Thread Pool
             self.executor = ThreadPoolExecutor(max_workers=self.MAX_WORKERS)
             log(f"Initialized ThreadPoolExecutor with {self.MAX_WORKERS} workers.", xbmc.LOGINFO)
-            self.load_scraped_files()
 
             # Initialize DB
             db_path = self.get_latest_db_path()
@@ -1557,6 +1590,8 @@ class KodiScraperSimulation:
             else:
                 self.db = None
                 log("No Kodi Database found. Simulation only.", xbmc.LOGWARNING)
+            
+            self.load_scraped_files()
             
             # Get start points
             paths = self.get_scraper_roots()
