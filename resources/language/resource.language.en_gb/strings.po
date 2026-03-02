@@ -110,7 +110,59 @@ msgstr ""
 
 msgctxt "#30999"
 msgid "Fanart.tv"
-msgstr "Fanart.tv"
+msgstr ""
+
+msgctxt "#32000"
+msgid "DNS Resolution"
+msgstr ""
+
+msgctxt "#32001"
+msgid "api.tmdb.org"
+msgstr ""
+
+msgctxt "#32002"
+msgid "webservice.fanart.tv"
+msgstr ""
+
+msgctxt "#32003"
+msgid "www.imdb.com"
+msgstr ""
+
+msgctxt "#32004"
+msgid "trakt.tv"
+msgstr ""
+
+msgctxt "#32005"
+msgid "base URL"
+msgstr ""
+
+msgctxt "#32006"
+msgid "TMDB API Base URL"
+msgstr ""
+
+msgctxt "#32007"
+msgid "Image Proxy"
+msgstr ""
+
+msgctxt "#32008"
+msgid "Fanart Base URL"
+msgstr ""
+
+msgctxt "#32009"
+msgid "IMDb Base URL"
+msgstr ""
+
+msgctxt "#32010"
+msgid "Trakt TV Base URL"
+msgstr ""
+
+msgctxt "#30021"
+msgid "Write Pinyin Initials to SortTitle"
+msgstr ""
+
+msgctxt "#30022"
+msgid "Write Pinyin Initials to OriginalTitle"
+msgstr ""
 
 msgctxt "#33000"
 msgid "Multi-thread Scraping"
@@ -138,4 +190,16 @@ msgstr ""
 
 msgctxt "#33015"
 msgid "API Key File"
+msgstr ""
+
+msgctxt "#33016"
+msgid "deepseek only on failure"
+msgstr ""
+
+msgctxt "#33020"
+msgid "Ignore Local NFO/Art"
+msgstr ""
+
+msgctxt "#33021"
+msgid "Skip BDMV Folder"
 msgstr ""
