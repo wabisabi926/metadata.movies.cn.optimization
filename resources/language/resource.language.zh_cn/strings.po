@@ -74,7 +74,7 @@ msgid "Add keywords as tags"
 msgstr "将关键词添加为标签"
 
 msgctxt "#30012"
-msgid "Separate TMDb fanart with title 到 landscape"
+msgid "Separate TMDb fanart with title to landscape"
 msgstr "将含片名的 TMDb 同人画归类为横版海报"
 
 msgctxt "#30013"
@@ -195,7 +195,7 @@ msgstr "DeepSeek API 密钥文件"
 
 msgctxt "#33016"
 msgid "deepseek only on failure"
-msgstr "仅在电影搜索失败时使用 DeepSeek 重试"
+msgstr ""
 
 msgctxt "#33020"
 msgid "Ignore Local NFO/Art"
